@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "Application": {
+      "title": "Application",
+      "description": "Membership application submitted by a user",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "fatherName": { "type": "string" },
+        "mobile": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "address": { "type": "string" },
+        "occupation": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["fullName", "mobile", "bloodGroup"]
+    },
+    "Member": {
+      "title": "Member",
+      "description": "Registered organization member profile",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "name": { "type": "string" },
+        "role": {
+          "type": "string",
+          "enum": ["super_admin", "president", "secretary", "treasurer", "member"]
+        },
+        "designation": { "type": "string" },
+        "mobile": { "type": "string" },
+        "bloodGroup": { "type": "string" },
+        "address": { "type": "string" },
+        "joinDate": { "type": "string" },
+        "status": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["memberId", "name", "mobile", "role"]
+    },
+    "Notice": {
+      "title": "Notice",
+      "description": "Organization notices and announcements",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "tag": { "type": "string" },
+        "date": { "type": "string" },
+        "publisher": { "type": "string" },
+        "meetingDate": { "type": "string" },
+        "meetingTime": { "type": "string" },
+        "meetingPlace": { "type": "string" },
+        "isImportant": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["title", "description", "tag"]
+    }
+  },
+  "firestore": {
+    "/applications/{applicationId}": {
+      "schema": { "$ref": "#/entities/Application" },
+      "description": "Membership application records"
+    },
+    "/members/{memberId}": {
+      "schema": { "$ref": "#/entities/Member" },
+      "description": "Active organization member records"
+    },
+    "/notices/{noticeId}": {
+      "schema": { "$ref": "#/entities/Notice" },
+      "description": "Organization notice board records"
+    }
+  }
+}

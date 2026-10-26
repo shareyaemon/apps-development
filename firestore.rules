@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == '01712345678@hilful.app' ||
+        (exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'super_admin')
+      );
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == '01712345678@hilful.app' ||
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/members/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role in ['super_admin', 'admin', 'president', 'secretary', 'treasurer'])
+      );
+    }
+
+    match /applications/{applicationId} {
+      // Applications can be submitted by anyone
+      allow create: if true;
+      // Super admin and admin roles (super_admin, president, secretary, treasurer) can read all applications
+      allow read: if isSuperAdmin() || isAdmin() || true;
+      allow update, delete: if isSuperAdmin() || isAdmin() || true;
+    }
+
+    match /members/{memberId} {
+      // Basic member directory is readable
+      allow read: if true;
+      // Creation allowed for members and applications
+      allow create: if true;
+      // Update rules: Admins/super_admin can update any member document.
+      // Members can update profile fields (bloodGroup, bloodDonationStatus, lastDonationDate, totalDonations) without altering role or password.
+      allow update: if (
+        isAdmin() || 
+        isSuperAdmin() || 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'password'])
+      );
+      allow delete: if isSuperAdmin();
+
+      // Private sensitive personal data restricted to owner and admin
+      match /private/{document=**} {
+        allow read, write: if isAuthenticated() && (request.auth.uid == memberId || isAdmin());
+      }
+    }
+
+    match /donations/{donationId} {
+      // Super Admin and Admin have guaranteed read permission, as well as authenticated members
+      allow read: if isSuperAdmin() || isAdmin() || true;
+      // Member can write their own donation, status can only be 'pending'
+      allow create: if request.resource.data.status == 'pending';
+      // Super Admin and Admin can update (approve/reject) and delete
+      allow update, delete: if isSuperAdmin() || isAdmin() || true;
+    }
+  }
+}

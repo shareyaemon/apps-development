@@ -1,0 +1,6 @@
+{
+  "name": "হিলফুল ফুজুল",
+  "description": "হিলফুল ফুজুল স্বর্ণটিলা যুব সংঘের অফিসিয়াল মোবাইল অ্যাপ্লিকেশন। স্থাপিত ২০১৭।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

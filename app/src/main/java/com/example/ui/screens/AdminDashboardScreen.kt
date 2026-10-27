@@ -159,9 +159,7 @@ fun AdminDashboardScreen(
                 membersList = list
                 isMembersLoading = false
                 membersErrorMessage = null
-                if (list.isNotEmpty()) {
-                    stats = stats.copy(totalMembers = FirebaseManager.toBengaliDigits(list.size.toString()))
-                }
+                stats = stats.copy(totalMembers = FirebaseManager.toBengaliDigits(list.size.toString()))
             },
             onError = { err ->
                 isMembersLoading = false
@@ -1304,7 +1302,7 @@ fun AdminDashboardScreen(
             isLoading = isMembersLoading,
             errorMessage = membersErrorMessage,
             onDismiss = { showMemberManagementDialog = false },
-            onMemberClick = { member ->
+            onMemberClick = { member: MemberData ->
                 selectedMemberForDetail = member
             },
             onRefresh = {
@@ -2231,3 +2229,861 @@ private fun NoticeFormDialog(
         }
     }
 }
+
+@Composable
+private fun MemberManagementDialog(
+    members: List<MemberData>,
+    isLoading: Boolean,
+    errorMessage: String?,
+    onDismiss: () -> Unit,
+    onMemberClick: (MemberData) -> Unit,
+    onRefresh: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+
+    val filteredMembers = remember(members, searchQuery) {
+        val query = searchQuery.trim().lowercase()
+        if (query.isBlank()) {
+            members
+        } else {
+            members.filter {
+                it.name.lowercase().contains(query) ||
+                it.memberId.lowercase().contains(query) ||
+                it.mobile.contains(query)
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 680.dp)
+                .testTag("member_management_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "সদস্য ব্যবস্থাপনা",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = NavyPrimary
+                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onRefresh) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "রিফ্রেশ",
+                                tint = NavyPrimary
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "বন্ধ করুন",
+                                tint = SubtitleGray
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = CardBorder, thickness = 0.8.dp)
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Stats row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "মোট সদস্য: ${FirebaseManager.toBengaliDigits(members.size.toString())} জন",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp,
+                        color = SubtitleGray
+                    )
+
+                    val activeCount = members.count { it.isActive }
+                    Text(
+                        text = "সক্রিয়: ${FirebaseManager.toBengaliDigits(activeCount.toString())} জন",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp,
+                        color = SuccessGreen
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Search box
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            text = "নাম, সদস্য আইডি বা মোবাইল দিয়ে খুঁজুন...",
+                            fontFamily = HindSiliguri,
+                            fontSize = 13.sp,
+                            color = SubtitleGray
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "সার্চ",
+                            tint = SubtitleGray,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "মুছুন",
+                                    tint = SubtitleGray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("member_search_input"),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = NavyPrimary,
+                        unfocusedBorderColor = CardBorder
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // List content
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = NavyPrimary)
+                    }
+                } else if (errorMessage != null && members.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = errorMessage,
+                            fontFamily = HindSiliguri,
+                            fontSize = 14.sp,
+                            color = BloodRed
+                        )
+                    }
+                } else if (filteredMembers.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (searchQuery.isNotBlank()) "কোনো সদস্য পাওয়া যায়নি" else "কোনো সদস্যের তথ্য পাওয়া যায়নি",
+                            fontFamily = HindSiliguri,
+                            fontSize = 14.sp,
+                            color = SubtitleGray
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(
+                            count = filteredMembers.size,
+                            key = { index ->
+                                val m = filteredMembers[index]
+                                if (m.docId.isNotBlank()) m.docId else "${m.memberId}_$index"
+                            }
+                        ) { index ->
+                            val member = filteredMembers[index]
+                            MemberListItemCard(
+                                member = member,
+                                onClick = { onMemberClick(member) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberListItemCard(
+    member: MemberData,
+    onClick: () -> Unit
+) {
+    val roleBengali = FirebaseManager.getRoleBengaliName(member.role)
+    val isActive = member.isActive
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .testTag("member_card_${member.memberId}"),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Name & ID
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = member.name,
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = NavyPrimary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "আইডি: ${member.memberId} • ${member.mobile}",
+                        fontFamily = HindSiliguri,
+                        fontSize = 12.sp,
+                        color = SubtitleGray
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Status Badge
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (isActive) SuccessGreen.copy(alpha = 0.12f) else SoftRedBg,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (isActive) "সক্রিয়" else "নিষ্ক্রিয়",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = if (isActive) SuccessGreen else BloodRed
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Role Badge & Arrow / Tap indicator
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .background(SoftSkyBlue.copy(alpha = 0.25f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "পদবী: $roleBengali",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp,
+                        color = NavyPrimary
+                    )
+                }
+
+                Text(
+                    text = "বিস্তারিত দেখুন ›",
+                    fontFamily = HindSiliguri,
+                    fontSize = 12.sp,
+                    color = NavyPrimary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberDetailDialog(
+    member: MemberData,
+    currentAdmin: MemberData?,
+    onDismiss: () -> Unit,
+    onSuccess: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var currentStatus by remember { mutableStateOf(member.status) }
+    var selectedRoleKey by remember { mutableStateOf(member.role) }
+    var isSaving by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
+
+    var showConfirmationDialog by remember { mutableStateOf(false) }
+    var pendingStatusChange by remember { mutableStateOf<String?>(null) }
+    var roleDropdownExpanded by remember { mutableStateOf(false) }
+
+    val roleOptions = listOf(
+        "সুপার অ্যাডমিন",
+        "সভাপতি",
+        "সম্পাদক",
+        "কোষাধ্যক্ষ",
+        "অ্যাডমিন",
+        "সদস্য"
+    )
+
+    val isSuperAdminAdmin = currentAdmin?.isSuperAdmin == true
+    val isTargetSuperAdmin = member.isSuperAdmin
+    val isSelf = currentAdmin != null && (
+        currentAdmin.uid == member.uid ||
+        currentAdmin.memberId == member.memberId ||
+        currentAdmin.mobile == member.mobile
+    )
+
+    // Cannot toggle status if target is super_admin or self
+    val canToggleStatus = !isTargetSuperAdmin && !isSelf
+    val isTargetCurrentlyActive = currentStatus != "inactive" && currentStatus != "নিষ্ক্রিয়"
+
+    if (showConfirmationDialog && pendingStatusChange != null) {
+        val willBeActive = pendingStatusChange == "active"
+        AlertDialog(
+            onDismissRequest = {
+                showConfirmationDialog = false
+                pendingStatusChange = null
+            },
+            title = {
+                Text(
+                    text = if (willBeActive) "সদস্য সক্রিয়করণ" else "সদস্য নিষ্ক্রিয়করণ",
+                    fontFamily = HindSiliguri,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = NavyPrimary
+                )
+            },
+            text = {
+                Text(
+                    text = if (willBeActive) {
+                        "আপনি কি নিশ্চিত যে \"${member.name}\"-কে সক্রিয় করতে চান?"
+                    } else {
+                        "আপনি কি নিশ্চিত যে \"${member.name}\"-কে নিষ্ক্রিয় করতে চান? নিষ্ক্রিয় সদস্যরা লগইন করতে পারবেন না।"
+                    },
+                    fontFamily = HindSiliguri,
+                    fontSize = 14.sp,
+                    color = SubtitleGray
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        currentStatus = pendingStatusChange!!
+                        showConfirmationDialog = false
+                        pendingStatusChange = null
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (willBeActive) SuccessGreen else BloodRed
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "হ্যাঁ, পরিবর্তন করুন",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = {
+                        showConfirmationDialog = false
+                        pendingStatusChange = null
+                    },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = "বাতিল",
+                        fontFamily = HindSiliguri,
+                        color = NavyPrimary
+                    )
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(18.dp)
+        )
+    }
+
+    Dialog(
+        onDismissRequest = {
+            if (!isSaving) onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .heightIn(max = 680.dp)
+                .testTag("member_detail_dialog")
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "সদস্যের তথ্য ও অনুমতি",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = NavyPrimary
+                    )
+
+                    IconButton(
+                        onClick = onDismiss,
+                        enabled = !isSaving
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "বন্ধ করুন",
+                            tint = SubtitleGray
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = CardBorder, thickness = 0.8.dp)
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    // Member Info Summary Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = BackgroundLight),
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = member.name,
+                                fontFamily = HindSiliguri,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = NavyPrimary
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "সদস্য আইডি: ${member.memberId}",
+                                    fontFamily = HindSiliguri,
+                                    fontSize = 13.sp,
+                                    color = SubtitleGray
+                                )
+                                Text(
+                                    text = member.bloodGroupDisplay,
+                                    fontFamily = HindSiliguri,
+                                    fontSize = 13.sp,
+                                    color = NavyPrimary
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "মোবাইল: ${member.mobile}",
+                                    fontFamily = HindSiliguri,
+                                    fontSize = 13.sp,
+                                    color = SubtitleGray
+                                )
+                                if (member.joinDate.isNotBlank()) {
+                                    Text(
+                                        text = "যোগদান: ${member.joinDate}",
+                                        fontFamily = HindSiliguri,
+                                        fontSize = 13.sp,
+                                        color = SubtitleGray
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Status Switch Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "সদস্য অবস্থা",
+                                    fontFamily = HindSiliguri,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = NavyPrimary
+                                )
+                                Text(
+                                    text = if (isTargetCurrentlyActive) "বর্তমানে সক্রিয়" else "বর্তমানে নিষ্ক্রিয়",
+                                    fontFamily = HindSiliguri,
+                                    fontSize = 12.sp,
+                                    color = if (isTargetCurrentlyActive) SuccessGreen else BloodRed
+                                )
+                                if (isTargetSuperAdmin) {
+                                    Text(
+                                        text = "সুপার অ্যাডমিনকে নিষ্ক্রিয় করা যাবে না",
+                                        fontFamily = HindSiliguri,
+                                        fontSize = 11.sp,
+                                        color = SubtitleGray
+                                    )
+                                } else if (isSelf) {
+                                    Text(
+                                        text = "নিজেকে নিষ্ক্রিয় করা যাবে না",
+                                        fontFamily = HindSiliguri,
+                                        fontSize = 11.sp,
+                                        color = SubtitleGray
+                                    )
+                                }
+                            }
+
+                            Switch(
+                                checked = isTargetCurrentlyActive,
+                                onCheckedChange = { checked ->
+                                    if (canToggleStatus && !isSaving) {
+                                        pendingStatusChange = if (checked) "active" else "inactive"
+                                        showConfirmationDialog = true
+                                    }
+                                },
+                                enabled = canToggleStatus && !isSaving,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = SuccessGreen,
+                                    uncheckedThumbColor = Color.White,
+                                    uncheckedTrackColor = BloodRed.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier.testTag("member_status_switch")
+                            )
+                        }
+                    }
+
+                    // Role Section
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "সদস্যের ভূমিকা (Role)",
+                                fontFamily = HindSiliguri,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = NavyPrimary
+                            )
+
+                            if (isSuperAdminAdmin) {
+                                val currentRoleBn = FirebaseManager.getRoleBengaliName(selectedRoleKey)
+                                val canChangeRole = !isTargetSuperAdmin
+
+                                Box(modifier = Modifier.fillMaxWidth()) {
+                                    OutlinedTextField(
+                                        value = currentRoleBn,
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        enabled = canChangeRole && !isSaving,
+                                        label = { Text("রোল নির্বাচন করুন", fontFamily = HindSiliguri) },
+                                        trailingIcon = {
+                                            if (canChangeRole) {
+                                                IconButton(
+                                                    onClick = { roleDropdownExpanded = !roleDropdownExpanded },
+                                                    enabled = !isSaving
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.ArrowDropDown,
+                                                        contentDescription = "রোল মেনু"
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable(enabled = canChangeRole && !isSaving) {
+                                                roleDropdownExpanded = true
+                                            }
+                                            .testTag("role_dropdown_field"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = NavyPrimary,
+                                            unfocusedBorderColor = CardBorder
+                                        )
+                                    )
+
+                                    DropdownMenu(
+                                        expanded = roleDropdownExpanded,
+                                        onDismissRequest = { roleDropdownExpanded = false }
+                                    ) {
+                                        roleOptions.forEach { optionBn ->
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        text = optionBn,
+                                                        fontFamily = HindSiliguri,
+                                                        fontWeight = if (optionBn == currentRoleBn) FontWeight.Bold else FontWeight.Normal,
+                                                        color = if (optionBn == currentRoleBn) NavyPrimary else Color.Unspecified
+                                                    )
+                                                },
+                                                onClick = {
+                                                    selectedRoleKey = FirebaseManager.getRoleKeyFromBengali(optionBn)
+                                                    roleDropdownExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (isTargetSuperAdmin) {
+                                    Text(
+                                        text = "সুপার অ্যাডমিনের ভূমিকা পরিবর্তন করা যাবে না",
+                                        fontFamily = HindSiliguri,
+                                        fontSize = 11.sp,
+                                        color = SubtitleGray
+                                    )
+                                }
+                            } else {
+                                val roleBn = FirebaseManager.getRoleBengaliName(member.role)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "বর্তমান ভূমিকা:",
+                                        fontFamily = HindSiliguri,
+                                        fontSize = 13.sp,
+                                        color = SubtitleGray
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .background(SoftSkyBlue.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = roleBn,
+                                            fontFamily = HindSiliguri,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = NavyPrimary
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = "শুধুমাত্র সুপার অ্যাডমিন ভূমিকা পরিবর্তন করতে পারেন",
+                                    fontFamily = HindSiliguri,
+                                    fontSize = 11.sp,
+                                    color = SubtitleGray
+                                )
+                            }
+                        }
+                    }
+
+                    // Error banner
+                    if (errorMessage != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = SoftRedBg),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = errorMessage!!,
+                                fontFamily = HindSiliguri,
+                                fontSize = 13.sp,
+                                color = BloodRed,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+
+                    // Success banner
+                    if (successMessage != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = SuccessGreen.copy(alpha = 0.12f)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = successMessage!!,
+                                fontFamily = HindSiliguri,
+                                fontSize = 13.sp,
+                                color = SuccessGreen,
+                                modifier = Modifier.padding(10.dp)
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, CardBorder),
+                        enabled = !isSaving
+                    ) {
+                        Text(
+                            text = "বাতিল",
+                            fontFamily = HindSiliguri,
+                            fontSize = 14.sp,
+                            color = NavyPrimary
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    isSaving = true
+                                    errorMessage = null
+                                    successMessage = null
+
+                                    val result = FirebaseManager.updateMemberRoleAndStatus(
+                                        context = context,
+                                        member = member,
+                                        newRole = selectedRoleKey,
+                                        newStatus = currentStatus
+                                    )
+
+                                    if (result.isSuccess) {
+                                        successMessage = "পরিবর্তন সংরক্ষিত হয়েছে"
+                                        Toast.makeText(context, "পরিবর্তন সংরক্ষিত হয়েছে", Toast.LENGTH_SHORT).show()
+                                        onSuccess()
+                                        kotlinx.coroutines.delay(600)
+                                        onDismiss()
+                                    } else {
+                                        val err = result.exceptionOrNull()
+                                        errorMessage = "ব্যর্থ হয়েছে: ${err?.localizedMessage ?: "অজানা ত্রুটি"}"
+                                    }
+                                } catch (e: Exception) {
+                                    errorMessage = "ব্যর্থ হয়েছে: ${e.message ?: "অজানা ত্রুটি"}"
+                                } finally {
+                                    isSaving = false
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp)
+                            .testTag("save_member_changes_button"),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = NavyPrimary,
+                            contentColor = Color.White,
+                            disabledContainerColor = NavyPrimary.copy(alpha = 0.6f),
+                            disabledContentColor = Color.White
+                        ),
+                        enabled = !isSaving
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                color = Color.White,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Text(
+                                text = "সংরক্ষণ করুন",
+                                fontFamily = HindSiliguri,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

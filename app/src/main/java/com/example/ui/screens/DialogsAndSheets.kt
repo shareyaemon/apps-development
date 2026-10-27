@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,10 +37,13 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.data.FirebaseManager
+import kotlinx.coroutines.tasks.await
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -170,33 +174,35 @@ fun ActivitiesBottomSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    val activities = remember {
-        listOf(
-            EventItem(
-                id = "1",
-                title = "বার্ষিক কুরআন মাহফিল ও পুরস্কার বিতরণী",
-                category = "আসন্ন কার্যক্রম",
-                date = "২৫ নভেম্বর ২০২৬",
-                location = "স্বর্ণটিলা ঈদগাহ মাঠ প্রাঙ্গণ",
-                description = "বিশিষ্ট আন্তর্জাতিক খ্যাতিসম্পন্ন মুফাসসিরগণ তাশরীফ আনবেন। সকল ধর্মপ্রাণ মুসলিম ভাইকে উপস্থিত থাকার জন্য দাওয়াত।"
-            ),
-            EventItem(
-                id = "2",
-                title = "শীতবস্ত্র বিতরণ ও চিকিৎসা ক্যাম্প",
-                category = "সামাজিক কার্যক্রম",
-                date = "১৫ ডিসেম্বর ২০২৬",
-                location = "স্বর্ণটিলা ও আশপাশের এলাকা",
-                description = "অসহায় ও শীতার্ত মানুষের মাঝে কম্বল ও গরম কাপড় বিতরণ কর্মসূচি।"
-            ),
-            EventItem(
-                id = "3",
-                title = "রমজান খাদ্য সহায়তা ও ইফতার মাহফিল",
-                category = "বার্ষিক সেবা",
-                date = "রমজান ১৪৪৮ হিজরি",
-                location = "স্বর্ণটিলা জামে মসজিদ",
-                description = "দরিদ্র পরিবারের মাঝে পুরো মাসের খাদ্য সামগ্রী ও নিত্যপ্রয়োজনীয় উপহার সামগ্রী বিতরণ।"
-            )
-        )
+    val context = LocalContext.current
+    var activities by remember { mutableStateOf<List<EventItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        isLoading = true
+        try {
+            val db = FirebaseManager.getFirestore(context)
+            if (db != null) {
+                val snap = db.collection("activities").get().await()
+                if (!snap.isEmpty) {
+                    val list = snap.documents.map { doc ->
+                        EventItem(
+                            id = doc.id,
+                            title = doc.getString("title") ?: "কার্যক্রম",
+                            category = doc.getString("category") ?: (if (doc.getBoolean("isCompleted") == true) "সম্পন্ন কার্যক্রম" else "আসন্ন কার্যক্রম"),
+                            date = doc.getString("date") ?: "তারিখ: [ঘোষণা হবে]",
+                            location = doc.getString("location") ?: "স্বর্ণটিলা",
+                            description = doc.getString("description") ?: ""
+                        )
+                    }
+                    activities = list
+                }
+            }
+        } catch (_: Exception) {
+            activities = emptyList()
+        } finally {
+            isLoading = false
+        }
     }
 
     ModalBottomSheet(
@@ -233,7 +239,39 @@ fun ActivitiesBottomSheet(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.padding(bottom = 32.dp)
             ) {
-                items(activities) { event ->
+                if (isLoading) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = NavyPrimary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    }
+                } else if (activities.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "এখনো কোনো কার্যক্রম নেই",
+                                fontFamily = HindSiliguri,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 15.sp,
+                                color = SubtitleGray
+                            )
+                        }
+                    }
+                } else {
+                    items(activities) { event ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -333,15 +371,35 @@ fun BloodDonorsBottomSheet(
 
     val bloodGroups = listOf("সকল", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-")
 
-    val allDonors = remember {
-        listOf(
-            BloodDonor("1", "মুহাম্মদ আব্দুল্লাহ", "O+", "01711000001", "স্বর্ণটিলা", "৩ মাস পূর্বে"),
-            BloodDonor("2", "তানভীর আহমেদ", "A+", "01811000002", "স্বর্ণটিলা বাজার", "১ মাস পূর্বে"),
-            BloodDonor("3", "জুবায়ের হোসেন", "B+", "01911000003", "উত্তর স্বর্ণটিলা", "৪ মাস পূর্বে"),
-            BloodDonor("4", "সাকিব আল হাসান", "O-", "01611000004", "দক্ষিণ পাড়া", "২ মাস পূর্বে"),
-            BloodDonor("5", "রাকিবুল ইসলাম", "AB+", "01722000005", "মধ্যপাড়া", "৫ মাস পূর্বে"),
-            BloodDonor("6", "মাহমুদুল হাসান", "B-", "01833000006", "স্বর্ণটিলা রোড", "৩ মাস পূর্বে")
+    var rawMembers by remember { mutableStateOf<List<com.example.data.MemberData>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        val reg = com.example.data.FirebaseManager.listenToMembers(
+            context = context,
+            onSuccess = { list ->
+                rawMembers = list
+                isLoading = false
+            },
+            onError = {
+                rawMembers = emptyList()
+                isLoading = false
+            }
         )
+        onDispose { reg?.remove() }
+    }
+
+    val allDonors = remember(rawMembers) {
+        rawMembers.filter { it.bloodGroup.isNotBlank() && it.bloodGroup != "যোগ করা হয়নি" }.map { m ->
+            BloodDonor(
+                id = m.docId.ifBlank { m.memberId },
+                name = m.name,
+                bloodGroup = m.bloodGroup,
+                phone = m.mobile,
+                area = m.address.ifBlank { "স্বর্ণটিলা" },
+                lastDonation = if (m.lastDonationDate != null) m.lastDonationDateDisplay else "এখনো রক্তদান করেননি"
+            )
+        }
     }
 
     val filteredDonors = if (selectedGroup == "সকল") allDonors else allDonors.filter { it.bloodGroup == selectedGroup }
@@ -427,11 +485,35 @@ fun BloodDonorsBottomSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                modifier = Modifier.padding(bottom = 32.dp)
-            ) {
-                items(filteredDonors) { donor ->
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(color = NavyPrimary)
+                }
+            } else if (filteredDonors.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "এখনো কোনো রক্তদাতা নিবন্ধিত নেই",
+                        fontFamily = HindSiliguri,
+                        fontSize = 15.sp,
+                        color = SubtitleGray
+                    )
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(bottom = 32.dp)
+                ) {
+                    items(filteredDonors) { donor ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -509,3 +591,5 @@ fun BloodDonorsBottomSheet(
         }
     }
 }
+}
+

@@ -27,11 +27,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,11 +43,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.FirebaseManager
+import com.example.data.MemberData
 import com.example.model.MemberBottomTab
 import com.example.ui.components.MemberBottomNav
 import com.example.ui.theme.HindSiliguri
@@ -71,17 +76,38 @@ fun MemberListScreen(
         onNavigateHome()
     }
 
-    // স্ক্রিনশট অনুযায়ী হুবহু ৭টি সদস্য
-    val allMembers = remember {
-        listOf(
-            MemberItemData("1", "ম", "মুহাম্মদ আব্দুল্লাহ", "সাধারণ সদস্য • O+", true, "মুহাম্মদ আব্দুল্লাহ সাধারণ সদস্য o+ 101 hf-2026-042"),
-            MemberItemData("2", "র", "রাকিব হাসান", "সভাপতি • A+", true, "রাকিব হাসান সভাপতি a+ 102 hf-2026-001"),
-            MemberItemData("3", "স", "সাইফুল ইসলাম", "সাধারণ সম্পাদক • B+", true, "সাইফুল ইসলাম সাধারণ সম্পাদক b+ 103 hf-2026-002"),
-            MemberItemData("4", "ন", "নাজমুল হোসেন", "কোষাধ্যক্ষ • AB+", true, "নাজমুল হোসেন কোষাধ্যক্ষ ab+ 104 hf-2026-003"),
-            MemberItemData("5", "ফ", "ফারুক আহমেদ", "সাধারণ সদস্য • O−", false, "ফারুক আহমেদ সাধারণ সদস্য o- 105 hf-2026-005"),
-            MemberItemData("6", "জ", "জাহিদ হাসান", "সাধারণ সদস্য • B−", true, "জাহিদ হাসান সাধারণ সদস্য b- 106 hf-2026-006"),
-            MemberItemData("7", "ই", "ইমরান হোসেন", "সাধারণ সদস্য • A−", true, "ইমরান হোসেন সাধারণ সদস্য a- 107 hf-2026-007")
+    val context = LocalContext.current
+    var rawMembers by remember { mutableStateOf<List<MemberData>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    DisposableEffect(Unit) {
+        val reg = FirebaseManager.listenToMembers(
+            context = context,
+            onSuccess = { list ->
+                rawMembers = list
+                isLoading = false
+            },
+            onError = {
+                rawMembers = emptyList()
+                isLoading = false
+            }
         )
+        onDispose { reg?.remove() }
+    }
+
+    val allMembers = remember(rawMembers) {
+        rawMembers.map { member ->
+            val roleBn = FirebaseManager.getRoleBengaliName(member.role)
+            val bloodPart = if (member.bloodGroup.isNotBlank() && member.bloodGroup != "যোগ করা হয়নি") " • ${member.bloodGroup}" else ""
+            MemberItemData(
+                id = member.docId.ifBlank { member.memberId },
+                initial = member.name.trim().take(1).ifBlank { "স" },
+                name = member.name,
+                roleAndBlood = "$roleBn$bloodPart",
+                isActive = member.isActive,
+                searchTerms = "${member.name} $roleBn ${member.bloodGroup} ${member.memberId} ${member.mobile}"
+            )
+        }
     }
 
     // ফিল্টার ও সার্চ লজিক
@@ -271,7 +297,30 @@ fun MemberListScreen(
 
                 // ৪. একটি সাদা কার্ডে (কর্নার ২০dp) ৭টি সারি, প্রতিটির উচ্চতা ৬৮dp, মাঝে ডিভাইডার
                 item {
-                    if (filteredMembers.isEmpty()) {
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(color = Color(0xFF1B2559))
+                        }
+                    } else if (allMembers.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "এখনো কোনো সদস্যের তথ্য নেই",
+                                fontFamily = HindSiliguri,
+                                fontSize = 15.sp,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+                    } else if (filteredMembers.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

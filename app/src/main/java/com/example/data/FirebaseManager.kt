@@ -26,10 +26,10 @@ import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 
 data class AdminDashboardStats(
-    val totalMembers: String = "৪২",
-    val thisMonthHadiya: String = "৳ ১০,০০০",
-    val pendingApplications: String = "৩",
-    val currentBalance: String = "৳ ৪,৩০০"
+    val totalMembers: String = "০",
+    val thisMonthHadiya: String = "৳ ০",
+    val pendingApplications: String = "০",
+    val currentBalance: String = "৳ ০"
 )
 
 data class ApprovalResult(
@@ -964,12 +964,12 @@ object FirebaseManager {
 
     suspend fun getAdminDashboardStats(context: Context): AdminDashboardStats {
         val db = getFirestore(context)
-        var totalMembersBn = "৪২"
-        var pendingCountBn = "৩"
+        var totalMembersBn = "০"
+        var pendingCountBn = "০"
         if (db != null) {
             try {
                 val memberSnap = db.collection("members").get().await()
-                val count = if (memberSnap.isEmpty) 42 else memberSnap.size()
+                val count = memberSnap.size()
                 totalMembersBn = toBengaliDigits(count.toString())
             } catch (e: Exception) {
                 Log.d(TAG, "Error fetching member count: ${e.message}")
@@ -984,9 +984,9 @@ object FirebaseManager {
         }
         return AdminDashboardStats(
             totalMembers = totalMembersBn,
-            thisMonthHadiya = "৳ ১০,০০০",
+            thisMonthHadiya = "৳ ০",
             pendingApplications = pendingCountBn,
-            currentBalance = "৳ ৪,৩০০"
+            currentBalance = "৳ ০"
         )
     }
 

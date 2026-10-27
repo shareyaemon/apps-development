@@ -28,16 +28,21 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForwardIos
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.data.FirebaseManager
+import kotlinx.coroutines.tasks.await
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,23 +83,56 @@ fun MeetingAttendanceScreen(
         onNavigateBack()
     }
 
-    val meetings = remember {
-        listOf(
-            MeetingItem("মাসিক সাধারণ সভা", "১৫ অক্টোবর ২০২৬", "✓ উপস্থিত", Color(0xFFDCFCE7), Color(0xFF166534)),
-            MeetingItem("মাহফিল প্রস্তুতি সভা", "১০ অক্টোবর ২০২৬", "✓ উপস্থিত", Color(0xFFDCFCE7), Color(0xFF166534)),
-            MeetingItem("মাসিক সাধারণ সভা", "১৫ সেপ্টেম্বর ২০২৬", "✕ অনুপস্থিত", Color(0xFFFEE2E2), Color(0xFFB91C1C)),
-            MeetingItem("জরুরি সভা", "২৮ আগস্ট ২০২৬", "− ছুটি", Color(0xFFFEF3C7), Color(0xFF92400E)),
-            MeetingItem("মাসিক সাধারণ সভা", "১৫ আগস্ট ২০২৬", "✓ উপস্থিত", Color(0xFFDCFCE7), Color(0xFF166534))
-        )
-    }
+    var meetings by remember { mutableStateOf<List<MeetingItem>>(emptyList()) }
+    var resolutions by remember { mutableStateOf<List<ResolutionItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    val resolutions = remember {
-        listOf(
-            ResolutionItem("মাসিক সাধারণ সভা রেজুলেশন", "১৫ অক্টোবর ২০২৬", "হাদিয়া সংগ্রহ কার্যক্রম গতিশীলকরণ ও বার্ষিক মাহফিলের প্রাথমিক বাজেট অনুমোদন।", "অনুমোদিত"),
-            ResolutionItem("মাহফিল প্রস্তুতি সভা রেজুলেশন", "১০ অক্টোবর ২০২৬", "স্বেচ্ছাসেবক উপ-কমিটি গঠন, শৃঙ্খলা দল ও মাঠ সাজসজ্জা দায়িত্ব বণ্টন।", "অনুমোদিত"),
-            ResolutionItem("জরুরি সভা রেজুলেশন", "২৮ আগস্ট ২০২৬", "ডেঙ্গু প্রতিরোধ ও বিশেষ রক্তদান কর্মসূচি বাস্তবায়নের সিদ্ধান্ত গৃহীত।", "সম্পন্ন"),
-            ResolutionItem("মাসিক সাধারণ সভা রেজুলেশন", "১৫ আগস্ট ২০২৬", "নতুন সদস্য আবেদন ফরম যাচাই-বাছাই ও সাধারণ সদস্যপদ অনুমোদন।", "অনুমোদিত")
-        )
+    LaunchedEffect(Unit) {
+        isLoading = true
+        try {
+            val db = FirebaseManager.getFirestore(context)
+            if (db != null) {
+                val meetSnap = db.collection("meetings").get().await()
+                if (!meetSnap.isEmpty) {
+                    meetings = meetSnap.documents.map { doc ->
+                        val status = doc.getString("status") ?: "উপস্থিত"
+                        val (statusText, bg, fg) = when {
+                            status.contains("অনুপস্থিত") -> Triple("✕ অনুপস্থিত", Color(0xFFFEE2E2), Color(0xFFB91C1C))
+                            status.contains("ছুটি") -> Triple("− ছুটি", Color(0xFFFEF3C7), Color(0xFF92400E))
+                            else -> Triple("✓ উপস্থিত", Color(0xFFDCFCE7), Color(0xFF166534))
+                        }
+                        MeetingItem(
+                            title = doc.getString("title") ?: "সাধারণ সভা",
+                            date = doc.getString("date") ?: "২০২৬",
+                            statusText = statusText,
+                            statusBg = bg,
+                            statusTextColor = fg
+                        )
+                    }
+                } else {
+                    meetings = emptyList()
+                }
+
+                val resSnap = db.collection("resolutions").get().await()
+                if (!resSnap.isEmpty) {
+                    resolutions = resSnap.documents.map { doc ->
+                        ResolutionItem(
+                            title = doc.getString("title") ?: "রেজুলেশন",
+                            date = doc.getString("date") ?: "২০২৬",
+                            summary = doc.getString("summary") ?: "",
+                            status = doc.getString("status") ?: "অনুমোদিত"
+                        )
+                    }
+                } else {
+                    resolutions = emptyList()
+                }
+            }
+        } catch (_: Exception) {
+            meetings = emptyList()
+            resolutions = emptyList()
+        } finally {
+            isLoading = false
+        }
     }
 
     Scaffold(
@@ -238,6 +276,11 @@ fun MeetingAttendanceScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val totalMeetings = meetings.size
+                            val presentMeetings = meetings.count { it.statusText.contains("উপস্থিত") }
+                            val attendancePercentage = if (totalMeetings > 0) (presentMeetings * 100 / totalMeetings) else 0
+                            val sweepAngle = attendancePercentage * 3.6f
+
                             Column {
                                 Text(
                                     text = "২০২৬ সালে উপস্থিতি",
@@ -248,7 +291,7 @@ fun MeetingAttendanceScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "৮ / ১০ সভা",
+                                    text = "${FirebaseManager.toBengaliDigits(presentMeetings.toString())} / ${FirebaseManager.toBengaliDigits(totalMeetings.toString())} সভা",
                                     fontFamily = HindSiliguri,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 28.sp,
@@ -256,7 +299,7 @@ fun MeetingAttendanceScreen(
                                 )
                             }
 
-                            // ডানে সার্কুলার প্রগ্রেস বার ৮০%
+                            // ডানে সার্কুলার প্রগ্রেস বার
                             Box(
                                 modifier = Modifier.size(68.dp),
                                 contentAlignment = Alignment.Center
@@ -268,18 +311,18 @@ fun MeetingAttendanceScreen(
                                         color = Color.White.copy(alpha = 0.15f),
                                         style = Stroke(width = strokeWidth)
                                     )
-                                    // Progress Arc 80% (288 degrees)
+                                    // Progress Arc
                                     drawArc(
                                         color = Color(0xFF06B6D4),
                                         startAngle = -90f,
-                                        sweepAngle = 288f,
+                                        sweepAngle = sweepAngle,
                                         useCenter = false,
                                         style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                                     )
                                 }
 
                                 Text(
-                                    text = "৮০%",
+                                    text = "${FirebaseManager.toBengaliDigits(attendancePercentage.toString())}%",
                                     fontFamily = HindSiliguri,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp,
@@ -299,7 +342,35 @@ fun MeetingAttendanceScreen(
                         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        if (isLoading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = Color(0xFF1B2559),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        } else if (meetings.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 32.dp, horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "বর্তমানে কোনো সভার হাজিরা তথ্য নেই",
+                                    fontFamily = HindSiliguri,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        } else {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                             meetings.forEachIndexed { index, meeting ->
                                 Row(
                                     modifier = Modifier
@@ -350,9 +421,9 @@ fun MeetingAttendanceScreen(
                                         modifier = Modifier.padding(horizontal = 16.dp)
                                     )
                                 }
-                            }
                         }
                     }
+                }
 
                     // ৫. নিচে বাটন কার্ড: "সর্বশেষ সভার রেজুলেশন দেখুন"
                     Card(
@@ -408,7 +479,35 @@ fun MeetingAttendanceScreen(
                         border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                        if (isLoading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(32.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = Color(0xFF1B2559),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                        } else if (resolutions.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 32.dp, horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "বর্তমানে কোনো রেজুলেশন তথ্য নেই",
+                                    fontFamily = HindSiliguri,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF64748B)
+                                )
+                            }
+                        } else {
+                            Column(modifier = Modifier.fillMaxWidth()) {
                             resolutions.forEachIndexed { index, res ->
                                 Column(
                                     modifier = Modifier

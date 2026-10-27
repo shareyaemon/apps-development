@@ -29,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -36,11 +37,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.data.FirebaseManager
+import kotlinx.coroutines.tasks.await
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -74,58 +78,37 @@ fun ActivitiesScreen(
         onNavigateBack()
     }
 
-    val upcomingActivities = remember {
-        listOf(
-            ActivityItem(
-                id = "1",
-                title = "বার্ষিক কুরআন মাহফিল",
-                date = "তারিখ: [ঘোষণা হবে]",
-                isRedIcon = false
-            ),
-            ActivityItem(
-                id = "2",
-                title = "বার্ষিক জশনে জুলুস",
-                date = "তারিখ: [ঘোষণা হবে]",
-                isRedIcon = false
-            ),
-            ActivityItem(
-                id = "3",
-                title = "রক্তদান ক্যাম্প",
-                date = "তারিখ: [ঘোষণা হবে]",
-                isRedIcon = true
-            ),
-            ActivityItem(
-                id = "4",
-                title = "কবরস্থান পরিষ্কার কর্মসূচি",
-                date = "তারিখ: [ঘোষণা হবে]",
-                isRedIcon = false
-            ),
-            ActivityItem(
-                id = "5",
-                title = "মসজিদ সাজসজ্জা (ঈদ ও কোরবানি)",
-                date = "তারিখ: [ঘোষণা হবে]",
-                isRedIcon = false
-            )
-        )
-    }
+    var upcomingActivities by remember { mutableStateOf<List<ActivityItem>>(emptyList()) }
+    var completedActivities by remember { mutableStateOf<List<ActivityItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    val completedActivities = remember {
-        listOf(
-            ActivityItem(
-                id = "6",
-                title = "ডেঙ্গু সচেতনতা ও ফ্রি মেডিকেল ক্যাম্প",
-                date = "সম্পন্ন: সেপ্টেম্বর ২০২৬",
-                isRedIcon = true,
-                isCompleted = true
-            ),
-            ActivityItem(
-                id = "7",
-                title = "রমজান ইফতার ও খাদ্য বিতরণ",
-                date = "সম্পন্ন: রমজান ১৪৪৭ হি.",
-                isRedIcon = false,
-                isCompleted = true
-            )
-        )
+    LaunchedEffect(Unit) {
+        isLoading = true
+        try {
+            val db = FirebaseManager.getFirestore(context)
+            if (db != null) {
+                val snap = db.collection("activities").get().await()
+                if (!snap.isEmpty) {
+                    val upList = mutableListOf<ActivityItem>()
+                    val compList = mutableListOf<ActivityItem>()
+                    for (doc in snap.documents) {
+                        val title = doc.getString("title") ?: "কার্যক্রম"
+                        val date = doc.getString("date") ?: "তারিখ: [ঘোষণা হবে]"
+                        val isCompleted = doc.getBoolean("isCompleted") ?: false
+                        val isRedIcon = doc.getBoolean("isRedIcon") ?: title.contains("রক্ত")
+                        val item = ActivityItem(doc.id, title, date, isRedIcon, isCompleted)
+                        if (isCompleted) compList.add(item) else upList.add(item)
+                    }
+                    upcomingActivities = upList
+                    completedActivities = compList
+                }
+            }
+        } catch (_: Exception) {
+            upcomingActivities = emptyList()
+            completedActivities = emptyList()
+        } finally {
+            isLoading = false
+        }
     }
 
     Box(
@@ -241,7 +224,6 @@ fun ActivitiesScreen(
                 }
             }
 
-            // Activities Cards List
             val currentList = if (selectedTab == 0) upcomingActivities else completedActivities
 
             LazyColumn(
@@ -250,11 +232,43 @@ fun ActivitiesScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(currentList) { item ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("activity_card_${item.id}"),
+                if (isLoading) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = NavyPrimary,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                    }
+                } else if (currentList.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp, horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "এখনো কোনো কার্যক্রম নেই",
+                                fontFamily = HindSiliguri,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 16.sp,
+                                color = SubtitleGray
+                            )
+                        }
+                    }
+                } else {
+                    items(currentList) { item ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("activity_card_${item.id}"),
                         colors = CardDefaults.cardColors(containerColor = Color.White),
                         shape = RoundedCornerShape(16.dp),
                         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder),

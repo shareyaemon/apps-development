@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -95,6 +96,17 @@ fun GuestHomeScreen(
     var showGalleryDialog by remember { mutableStateOf(false) }
 
     var notices by remember { mutableStateOf<List<NoticeItem>>(emptyList()) }
+
+    BackHandler {
+        when {
+            showNoticesSheet -> showNoticesSheet = false
+            showActivitiesSheet -> showActivitiesSheet = false
+            showBloodDonorsSheet -> showBloodDonorsSheet = false
+            showGalleryDialog -> showGalleryDialog = false
+            selectedBottomNav != 0 -> selectedBottomNav = 0
+            else -> (context as? android.app.Activity)?.finish()
+        }
+    }
 
     DisposableEffect(context) {
         var listener: com.google.firebase.firestore.ListenerRegistration? = null

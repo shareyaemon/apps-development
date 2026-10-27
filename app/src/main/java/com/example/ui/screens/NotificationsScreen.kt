@@ -31,16 +31,20 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.data.FirebaseManager
+import kotlinx.coroutines.tasks.await
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,79 +77,59 @@ fun NotificationsScreen(
         onNavigateBack()
     }
 
-    // অপঠিত স্ট্যাটাস ট্র্যাকিং (ডিফল্টে প্রথম ৩টি অপঠিত)
-    var unreadSet by remember { mutableStateOf(setOf("1", "2", "3")) }
+    // অপঠিত স্ট্যাটাস ট্র্যাকিং
+    var unreadSet by remember { mutableStateOf(emptySet<String>()) }
 
-    // "আজ" বিভাগের আইটেম
-    val todayItems = remember {
-        listOf(
-            NotificationItemData(
-                id = "1",
-                title = "নতুন নোটিশ: মাসিক সাধারণ সভা",
-                time = "২ ঘণ্টা আগে",
-                icon = Icons.Default.Campaign,
-                iconBg = Color(0xFFE0F2FE),
-                iconTint = Color(0xFF0284C7),
-                isUnread = true
-            ),
-            NotificationItemData(
-                id = "2",
-                title = "হাদিয়া বকেয়া: ৩ মাসের ৳৫০০",
-                time = "৫ ঘণ্টা আগে",
-                icon = Icons.Default.CreditCard,
-                iconBg = Color(0xFFFEE2E2),
-                iconTint = Color(0xFFB91C1C),
-                isUnread = true
-            )
-        )
-    }
+    var todayItems by remember { mutableStateOf<List<NotificationItemData>>(emptyList()) }
+    var yesterdayItems by remember { mutableStateOf<List<NotificationItemData>>(emptyList()) }
+    var earlierItems by remember { mutableStateOf<List<NotificationItemData>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    // "গতকাল" বিভাগের আইটেম
-    val yesterdayItems = remember {
-        listOf(
-            NotificationItemData(
-                id = "3",
-                title = "O+ রক্তের জরুরি অনুরোধ",
-                time = "গতকাল, সন্ধ্যা ৬:৪০",
-                icon = Icons.Default.WaterDrop,
-                iconBg = Color(0xFFFEE2E2),
-                iconTint = Color(0xFFDC2626),
-                isUnread = true
-            ),
-            NotificationItemData(
-                id = "4",
-                title = "আপনার আবেদন অনুমোদিত হয়েছে",
-                time = "গতকাল, সকাল ১০:৩০",
-                icon = Icons.Default.CheckCircle,
-                iconBg = Color(0xFFDCFCE7),
-                iconTint = Color(0xFF16A34A),
-                isUnread = false
-            )
-        )
-    }
-
-    // "আগের" বিভাগের আইটেম
-    val earlierItems = remember {
-        listOf(
-            NotificationItemData(
-                id = "5",
-                title = "কবরস্থান পরিষ্কার কর্মসূচির স্মরণিকা",
-                time = "১২ অক্টোবর",
-                icon = Icons.Default.Groups,
-                iconBg = Color(0xFFFEF3C7),
-                iconTint = Color(0xFFD97706),
-                isUnread = false
-            ),
-            NotificationItemData(
-                id = "6",
-                title = "জুন মাসের হাদিয়ার রসিদ প্রস্তুত",
-                time = "০৮ অক্টোবর",
-                icon = Icons.Default.Description,
-                iconBg = Color(0xFFF3E8FF),
-                iconTint = Color(0xFF7E22CE),
-                isUnread = false
-            )
-        )
+    LaunchedEffect(Unit) {
+        isLoading = true
+        try {
+            val db = FirebaseManager.getFirestore(context)
+            if (db != null) {
+                val notifSnap = db.collection("notifications").get().await()
+                if (!notifSnap.isEmpty) {
+                    val list = notifSnap.documents.map { doc ->
+                        NotificationItemData(
+                            id = doc.id,
+                            title = doc.getString("title") ?: "বিজ্ঞপ্তি",
+                            time = doc.getString("time") ?: "আজ",
+                            icon = Icons.Default.Campaign,
+                            iconBg = Color(0xFFE0F2FE),
+                            iconTint = Color(0xFF0284C7),
+                            isUnread = doc.getBoolean("isUnread") ?: true
+                        )
+                    }
+                    todayItems = list
+                    unreadSet = list.filter { it.isUnread }.map { it.id }.toSet()
+                } else {
+                    val noticesSnap = db.collection("notices").get().await()
+                    if (!noticesSnap.isEmpty) {
+                        val list = noticesSnap.documents.map { doc ->
+                            NotificationItemData(
+                                id = doc.id,
+                                title = "নোটিশ: ${doc.getString("title") ?: "সাধারণ নোটিশ"}",
+                                time = doc.getString("date") ?: "সম্প্রতি",
+                                icon = Icons.Default.Campaign,
+                                iconBg = Color(0xFFE0F2FE),
+                                iconTint = Color(0xFF0284C7),
+                                isUnread = false
+                            )
+                        }
+                        todayItems = list
+                    } else {
+                        todayItems = emptyList()
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            todayItems = emptyList()
+        } finally {
+            isLoading = false
+        }
     }
 
     Scaffold(
@@ -223,45 +207,93 @@ fun NotificationsScreen(
 
             HorizontalDivider(color = Color(0xFFE2E8F0), thickness = 1.dp)
 
-            // ২. স্ক্রলযোগ্য সেকশনভিত্তিক নোটিফিকেশন তালিকা
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
-            ) {
-                // ১. "আজ" সেকশন
-                NotificationSection(
-                    sectionTitle = "আজ",
-                    items = todayItems,
-                    unreadSet = unreadSet,
-                    onItemClick = { id ->
-                        unreadSet = unreadSet - id
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF1B2559),
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            } else if (todayItems.isEmpty() && yesterdayItems.isEmpty() && earlierItems.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Campaign,
+                            contentDescription = null,
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(56.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "বর্তমানে কোনো নতুন বিজ্ঞপ্তি নেই",
+                            fontFamily = HindSiliguri,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 16.sp,
+                            color = Color(0xFF64748B),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
                     }
-                )
-
-                // ২. "গতকাল" সেকশন
-                NotificationSection(
-                    sectionTitle = "গতকাল",
-                    items = yesterdayItems,
-                    unreadSet = unreadSet,
-                    onItemClick = { id ->
-                        unreadSet = unreadSet - id
+                }
+            } else {
+                // ২. স্ক্রলযোগ্য সেকশনভিত্তিক নোটিফিকেশন তালিকা
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp)
+                ) {
+                    if (todayItems.isNotEmpty()) {
+                        // ১. "আজ" সেকশন
+                        NotificationSection(
+                            sectionTitle = "আজ",
+                            items = todayItems,
+                            unreadSet = unreadSet,
+                            onItemClick = { id ->
+                                unreadSet = unreadSet - id
+                            }
+                        )
                     }
-                )
 
-                // ৩. "আগের" সেকশন
-                NotificationSection(
-                    sectionTitle = "আগের",
-                    items = earlierItems,
-                    unreadSet = unreadSet,
-                    onItemClick = { id ->
-                        unreadSet = unreadSet - id
+                    if (yesterdayItems.isNotEmpty()) {
+                        // ২. "গতকাল" সেকশন
+                        NotificationSection(
+                            sectionTitle = "গতকাল",
+                            items = yesterdayItems,
+                            unreadSet = unreadSet,
+                            onItemClick = { id ->
+                                unreadSet = unreadSet - id
+                            }
+                        )
                     }
-                )
 
-                Spacer(modifier = Modifier.height(20.dp))
+                    if (earlierItems.isNotEmpty()) {
+                        // ৩. "আগের" সেকশন
+                        NotificationSection(
+                            sectionTitle = "আগের",
+                            items = earlierItems,
+                            unreadSet = unreadSet,
+                            onItemClick = { id ->
+                                unreadSet = unreadSet - id
+                            }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
             }
         }
     }

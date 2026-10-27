@@ -31,16 +31,20 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.data.FirebaseManager
+import com.example.data.MemberData
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -79,48 +83,42 @@ fun BloodDonorsScreen(
     val row1 = listOf("A+", "A−", "B+", "B−")
     val row2 = listOf("O+", "O−", "AB+", "AB−")
 
-    // সকল গ্রুপের জন্য ডেমো দাতা তালিকা
-    val donorsMap = remember {
-        mapOf(
-            "O+" to listOf(
-                DonorItem("1", "মুহাম্মদ আব্দুল্লাহ", "O+", "প্রস্তুত", true),
-                DonorItem("2", "শাহরিয়ার আলম", "O+", "অপেক্ষমাণ", false),
-                DonorItem("3", "তানভীর আহমেদ", "O+", "প্রস্তুত", true)
-            ),
-            "A+" to listOf(
-                DonorItem("4", "রাকিবুল হাসান", "A+", "প্রস্তুত", true),
-                DonorItem("5", "মাহবুবুর রহমান", "A+", "অপেক্ষমাণ", false),
-                DonorItem("6", "জসিম উদ্দিন", "A+", "প্রস্তুত", true)
-            ),
-            "A−" to listOf(
-                DonorItem("7", "ইমরান হোসেন", "A−", "প্রস্তুত", true),
-                DonorItem("8", "তারেক জামান", "A−", "অপেক্ষমাণ", false)
-            ),
-            "B+" to listOf(
-                DonorItem("9", "সাইফুল ইসলাম", "B+", "প্রস্তুত", true),
-                DonorItem("10", "আরিফুল হক", "B+", "প্রস্তুত", true),
-                DonorItem("11", "মোস্তফা কামাল", "B+", "অপেক্ষমাণ", false)
-            ),
-            "B−" to listOf(
-                DonorItem("12", "জাহিদ হাসান", "B−", "প্রস্তুত", true),
-                DonorItem("13", "কামরুল ইসলাম", "B−", "অপেক্ষমাণ", false)
-            ),
-            "O−" to listOf(
-                DonorItem("14", "ফারুক আহমেদ", "O−", "অপেক্ষমাণ", false),
-                DonorItem("15", "রফিকুল ইসলাম", "O−", "প্রস্তুত", true)
-            ),
-            "AB+" to listOf(
-                DonorItem("16", "নাজমুল হোসেন", "AB+", "প্রস্তুত", true),
-                DonorItem("17", "আশরাফুল আলম", "AB+", "অপেক্ষমাণ", false)
-            ),
-            "AB−" to listOf(
-                DonorItem("18", "ফখরুল হাসান", "AB−", "অপেক্ষমাণ", false),
-                DonorItem("19", "শামীম আহমেদ", "AB−", "প্রস্তুত", true)
-            )
+    var rawMembers by remember { mutableStateOf<List<MemberData>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    DisposableEffect(Unit) {
+        val reg = FirebaseManager.listenToMembers(
+            context = context,
+            onSuccess = { list ->
+                rawMembers = list
+                isLoading = false
+            },
+            onError = {
+                rawMembers = emptyList()
+                isLoading = false
+            }
         )
+        onDispose { reg?.remove() }
     }
 
-    val currentDonors = donorsMap[selectedGroup] ?: emptyList()
+    val currentDonors = remember(selectedGroup, rawMembers) {
+        val target = selectedGroup.replace("−", "-").trim()
+        rawMembers.filter { m ->
+            val bg = m.bloodGroup.replace("−", "-").trim()
+            bg.equals(target, ignoreCase = true)
+        }.map { m ->
+            val isReady = m.bloodDonationStatus == "প্রস্তুত" || m.isEligibleToDonateNow
+            DonorItem(
+                id = m.docId.ifBlank { m.memberId },
+                name = m.name,
+                bloodGroup = m.bloodGroup.ifBlank { selectedGroup },
+                statusText = if (isReady) "প্রস্তুত" else "অপেক্ষমাণ",
+                isReady = isReady,
+                phone = m.mobile,
+                lastDonationDate = if (m.lastDonationDate != null) "সর্বশেষ রক্তদান: ${m.lastDonationDateDisplay}" else "এখনো রক্তদান করা হয়নি"
+            )
+        }
+    }
 
     Scaffold(
         modifier = Modifier.testTag("blood_donors_screen"),
@@ -271,7 +269,32 @@ fun BloodDonorsScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        currentDonors.forEachIndexed { index, donor ->
+                        if (isLoading) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = Color(0xFF1B2559))
+                            }
+                        } else if (currentDonors.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp, horizontal = 16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "এই রক্তের গ্রুপের কোনো রক্তদাতা এখনো নিবন্ধিত নেই",
+                                    fontFamily = HindSiliguri,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFF64748B),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        } else {
+                            currentDonors.forEachIndexed { index, donor ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -390,6 +413,7 @@ fun BloodDonorsScreen(
                             }
                         }
                     }
+                }
                 }
 
                 // স্ক্রল এলাকার নিচে বাটনের জন্য পর্যাপ্ত স্পেস যেন বাটন কোনো কার্ডকে না ঢেকে দেয়

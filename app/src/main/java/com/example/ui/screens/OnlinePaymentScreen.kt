@@ -323,7 +323,8 @@ fun OnlinePaymentScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Bottom Button: "৳৫০০ পরিশোধ করুন" (1-second loading then navigates to receipt)
+            // Bottom Button: "৳ পরিশোধ করুন" (Shows notice that online payment is coming soon)
+            val context = androidx.compose.ui.platform.LocalContext.current
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -332,43 +333,25 @@ fun OnlinePaymentScreen(
             ) {
                 Button(
                     onClick = {
-                        if (!isProcessing) {
-                            isProcessing = true
-                            coroutineScope.launch {
-                                delay(1000)
-                                isProcessing = false
-                                onPaymentSuccess()
-                            }
-                        }
+                        android.widget.Toast.makeText(context, "অনলাইন পেমেন্ট শীঘ্রই চালু হবে", android.widget.Toast.LENGTH_SHORT).show()
                     },
-                    enabled = !isProcessing,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
                         .testTag("submit_payment_button"),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = NavyPrimary,
-                        contentColor = Color.White,
-                        disabledContainerColor = NavyPrimary.copy(alpha = 0.85f),
-                        disabledContentColor = Color.White
+                        contentColor = Color.White
                     ),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    if (isProcessing) {
-                        CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 2.5.dp,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    } else {
-                        Text(
-                            text = "৳ $totalAmount পরিশোধ করুন",
-                            fontFamily = HindSiliguri,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = Color.White
-                        )
-                    }
+                    Text(
+                        text = "৳ ${com.example.data.FirebaseManager.toBengaliDigits(totalAmount.toString())} পরিশোধ করুন",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = Color.White
+                    )
                 }
             }
         }

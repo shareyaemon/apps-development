@@ -99,8 +99,11 @@ fun MemberHomeScreen(
     var showGalleryDialog by remember { mutableStateOf(false) }
 
     BackHandler {
-        // Double press or toast to exit/logout
-        onLogout()
+        when {
+            showBloodDonorsSheet -> showBloodDonorsSheet = false
+            showGalleryDialog -> showGalleryDialog = false
+            else -> (context as? android.app.Activity)?.finish()
+        }
     }
 
     Scaffold(

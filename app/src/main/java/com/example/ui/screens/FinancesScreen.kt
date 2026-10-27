@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -40,10 +41,14 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.example.data.FirebaseManager
+import kotlinx.coroutines.tasks.await
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,14 +83,54 @@ fun FinancesScreen(
         onNavigateBack()
     }
 
-    val transactions = remember {
-        listOf(
-            SimpleTransaction("মাসিক হাদিয়া সংগ্রহ", "+ ৳ ১০,০০০", true),
-            SimpleTransaction("সাধারণ অনুদান", "+ ৳ ২,৫০০", true),
-            SimpleTransaction("মাহফিল প্রস্তুতি খরচ", "− ৳ ৫,০০০", false),
-            SimpleTransaction("মসজিদ সাজসজ্জা", "− ৳ ২,০০০", false),
-            SimpleTransaction("কবরস্থান পরিষ্কার", "− ৳ ১,২০০", false)
-        )
+    var transactions by remember { mutableStateOf<List<SimpleTransaction>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var totalIncomeVal by remember { mutableLongStateOf(0L) }
+    var totalExpenseVal by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(selectedMonth) {
+        isLoading = true
+        try {
+            val db = FirebaseManager.getFirestore(context)
+            if (db != null) {
+                val snap = db.collection("finances").get().await()
+                if (!snap.isEmpty) {
+                    val list = mutableListOf<SimpleTransaction>()
+                    var inc = 0L
+                    var exp = 0L
+                    for (doc in snap.documents) {
+                        val title = doc.getString("title") ?: "লেনদেন"
+                        val isIncome = doc.getBoolean("isIncome") ?: (doc.getString("type") == "income")
+                        val amtNum = doc.getLong("amount") ?: 0L
+                        val amtStr = if (amtNum > 0) {
+                            val sign = if (isIncome) "+ " else "− "
+                            "$sign৳ ${FirebaseManager.toBengaliDigits(amtNum.toString())}"
+                        } else {
+                            doc.getString("amount") ?: "৳ ০"
+                        }
+                        if (isIncome) inc += amtNum else exp += amtNum
+                        list.add(SimpleTransaction(title, amtStr, isIncome))
+                    }
+                    transactions = list
+                    totalIncomeVal = inc
+                    totalExpenseVal = exp
+                } else {
+                    transactions = emptyList()
+                    totalIncomeVal = 0L
+                    totalExpenseVal = 0L
+                }
+            } else {
+                transactions = emptyList()
+                totalIncomeVal = 0L
+                totalExpenseVal = 0L
+            }
+        } catch (_: Exception) {
+            transactions = emptyList()
+            totalIncomeVal = 0L
+            totalExpenseVal = 0L
+        } finally {
+            isLoading = false
+        }
     }
 
     val scrollState = rememberScrollState()
@@ -277,7 +322,7 @@ fun FinancesScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "৳ ১২,৫০০",
+                                text = "৳ ${FirebaseManager.toBengaliDigits(totalIncomeVal.toString())}",
                                 fontFamily = HindSiliguri,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 22.sp,
@@ -286,7 +331,7 @@ fun FinancesScreen(
                         }
                     }
 
-                    // ২. মোট ব্যয় হালকা লাল (#FEE2E2) ও গাঢ় লাল (#B91C1C) "৳ ৮,২০০"
+                    // ২. মোট ব্যয় হালকা লাল (#FEE2E2) ও গাঢ় লাল (#B91C1C)
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -305,7 +350,7 @@ fun FinancesScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "৳ ৮,২০০",
+                                text = "৳ ${FirebaseManager.toBengaliDigits(totalExpenseVal.toString())}",
                                 fontFamily = HindSiliguri,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 22.sp,
@@ -314,7 +359,8 @@ fun FinancesScreen(
                         }
                     }
 
-                    // ৩. জমা হালকা নীল (#E6F5FD) ও নেভি "৳ ৪,৩০০" (বাংলা সংখ্যায়)
+                    // ৩. জমা হালকা নীল (#E6F5FD) ও নেভি
+                    val netBalance = totalIncomeVal - totalExpenseVal
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -333,7 +379,7 @@ fun FinancesScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "৳ ৪,৩০০",
+                                text = "৳ ${FirebaseManager.toBengaliDigits(netBalance.toString())}",
                                 fontFamily = HindSiliguri,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 22.sp,
@@ -368,6 +414,10 @@ fun FinancesScreen(
 
                         Spacer(modifier = Modifier.height(24.dp))
 
+                        val maxBarVal = maxOf(totalIncomeVal, totalExpenseVal, 1L)
+                        val incBarHeight = if (totalIncomeVal > 0) (135.dp * (totalIncomeVal.toFloat() / maxBarVal)).coerceIn(12.dp, 135.dp) else 8.dp
+                        val expBarHeight = if (totalExpenseVal > 0) (135.dp * (totalExpenseVal.toFloat() / maxBarVal)).coerceIn(12.dp, 135.dp) else 8.dp
+
                         // শুধুমাত্র ২টি বার: সবুজ (#16A34A) আয় ও গাঢ় লাল (#B91C1C) ব্যয় (কোনো টাকার লেখা উপরে নয়)
                         Row(
                             modifier = Modifier
@@ -381,7 +431,7 @@ fun FinancesScreen(
                             Box(
                                 modifier = Modifier
                                     .width(64.dp)
-                                    .height(135.dp)
+                                    .height(incBarHeight)
                                     .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
                                     .background(Color(0xFF16A34A))
                             )
@@ -390,7 +440,7 @@ fun FinancesScreen(
                             Box(
                                 modifier = Modifier
                                     .width(64.dp)
-                                    .height(90.dp)
+                                    .height(expBarHeight)
                                     .clip(RoundedCornerShape(topStart = 10.dp, topEnd = 10.dp))
                                     .background(Color(0xFFB91C1C))
                             )
@@ -447,7 +497,7 @@ fun FinancesScreen(
                     modifier = Modifier.padding(top = 4.dp, bottom = 2.dp)
                 )
 
-                // নিচে একটি সাদা কার্ডে ৫টি সারি (সারির উচ্চতা ৭০dp, মাঝে হালকা ডিভাইডার)
+                // নিচে একটি সাদা কার্ডে সারি (মাঝে হালকা ডিভাইডার)
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -457,67 +507,96 @@ fun FinancesScreen(
                     border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        transactions.forEachIndexed { index, tx ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(70.dp)
-                                    .padding(horizontal = 16.dp)
-                                    .testTag("tx_row_${tx.title}"),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                // বাঁয়ে ৪৪dp গোল আইকন (সবুজ ব্যাকগ্রাউন্ডে ↑ আয়ের জন্য, লাল ব্যাকগ্রাউন্ডে ↓ ব্যয়ের জন্য)
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = Color(0xFF1B2559),
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    } else if (transactions.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp, horizontal = 16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "বর্তমানে কোনো লেনদেনের তথ্য নেই",
+                                fontFamily = HindSiliguri,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 15.sp,
+                                color = Color(0xFF64748B)
+                            )
+                        }
+                    } else {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            transactions.forEachIndexed { index, tx ->
                                 Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(70.dp)
+                                        .padding(horizontal = 16.dp)
+                                        .testTag("tx_row_${tx.title}"),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f)
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (tx.isIncome) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)
-                                            ),
-                                        contentAlignment = Alignment.Center
+                                    // বাঁয়ে ৪৪dp গোল আইকন (সবুজ ব্যাকগ্রাউন্ডে ↑ আয়ের জন্য, লাল ব্যাকগ্রাউন্ডে ↓ ব্যয়ের জন্য)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(
-                                            imageVector = if (tx.isIncome) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                                            contentDescription = if (tx.isIncome) "আয়" else "ব্যয়",
-                                            tint = if (tx.isIncome) Color(0xFF16A34A) else Color(0xFFB91C1C),
-                                            modifier = Modifier.size(20.dp)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(CircleShape)
+                                                .background(
+                                                    if (tx.isIncome) Color(0xFFDCFCE7) else Color(0xFFFEE2E2)
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (tx.isIncome) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                                                contentDescription = if (tx.isIncome) "আয়" else "ব্যয়",
+                                                tint = if (tx.isIncome) Color(0xFF16A34A) else Color(0xFFB91C1C),
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(14.dp))
+
+                                        // মাঝে ১৬sp লেখা
+                                        Text(
+                                            text = tx.title,
+                                            fontFamily = HindSiliguri,
+                                            fontWeight = FontWeight.Medium,
+                                            fontSize = 16.sp,
+                                            color = Color(0xFF1B2559)
                                         )
                                     }
 
-                                    Spacer(modifier = Modifier.width(14.dp))
-
-                                    // মাঝে ১৬sp লেখা
+                                    // ডানে ১৬sp Bold টাকা (সবুজ / লাল)
                                     Text(
-                                        text = tx.title,
+                                        text = tx.amount,
                                         fontFamily = HindSiliguri,
-                                        fontWeight = FontWeight.Medium,
+                                        fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp,
-                                        color = Color(0xFF1B2559)
+                                        color = if (tx.isIncome) Color(0xFF16A34A) else Color(0xFFB91C1C)
                                     )
                                 }
 
-                                // ডানে ১৬sp Bold টাকা (সবুজ / লাল)
-                                Text(
-                                    text = tx.amount,
-                                    fontFamily = HindSiliguri,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = if (tx.isIncome) Color(0xFF16A34A) else Color(0xFFB91C1C)
-                                )
-                            }
-
-                            if (index < transactions.size - 1) {
-                                HorizontalDivider(
-                                    color = Color(0xFFE2E8F0),
-                                    thickness = 0.8.dp,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
-                                )
+                                if (index < transactions.size - 1) {
+                                    HorizontalDivider(
+                                        color = Color(0xFFE2E8F0),
+                                        thickness = 0.8.dp,
+                                        modifier = Modifier.padding(horizontal = 16.dp)
+                                    )
+                                }
                             }
                         }
                     }

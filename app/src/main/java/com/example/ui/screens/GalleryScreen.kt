@@ -26,12 +26,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,17 +42,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.FirebaseManager
 import com.example.ui.theme.HindSiliguri
+import kotlinx.coroutines.tasks.await
+
+private data class GalleryPhoto(
+    val id: String,
+    val title: String,
+    val category: String
+)
 
 @Composable
 fun GalleryScreen(
     onNavigateBack: () -> Unit
 ) {
+    val context = LocalContext.current
     BackHandler {
         onNavigateBack()
     }
@@ -58,17 +70,31 @@ fun GalleryScreen(
     var selectedCategory by remember { mutableStateOf("সব") }
     val categories = listOf("সব", "মাহফিল", "জুলুস", "রক্তদান", "সমাজসেবা")
 
-    // ১২টি রঙিন প্লেসহোল্ডার গ্রিড আইটেম (ছবির মতো অলটারনেটিং নীল ও ল্যাভেন্ডার রং)
-    val skyBlue = Color(0xFFD6F0FA)
-    val softLavender = Color(0xFFE2E0F8)
+    var galleryItems by remember { mutableStateOf<List<GalleryPhoto>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
-    val placeholderItems = remember {
-        listOf(
-            skyBlue, softLavender, skyBlue,
-            softLavender, skyBlue, softLavender,
-            skyBlue, softLavender, skyBlue,
-            softLavender, skyBlue, softLavender
-        )
+    LaunchedEffect(Unit) {
+        isLoading = true
+        try {
+            val db = FirebaseManager.getFirestore(context)
+            if (db != null) {
+                val snap = db.collection("gallery").get().await()
+                if (!snap.isEmpty) {
+                    val list = snap.documents.map { doc ->
+                        GalleryPhoto(
+                            id = doc.id,
+                            title = doc.getString("title") ?: "ছবি",
+                            category = doc.getString("category") ?: "সাধারণ"
+                        )
+                    }
+                    galleryItems = list
+                }
+            }
+        } catch (_: Exception) {
+            galleryItems = emptyList()
+        } finally {
+            isLoading = false
+        }
     }
 
     Scaffold(
@@ -165,31 +191,74 @@ fun GalleryScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // ৩ কলামের রঙিন প্লেসহোল্ডার গ্রিড
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(placeholderItems.size) { index ->
-                    val bgColor = placeholderItems[index]
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(bgColor),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = "ছবি প্লেসহোল্ডার",
-                            tint = Color(0xFF1B2559),
-                            modifier = Modifier.size(28.dp)
-                        )
+            val filteredItems = if (selectedCategory == "সব") {
+                galleryItems
+            } else {
+                galleryItems.filter { it.category == selectedCategory }
+            }
+
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = Color(0xFF1B2559),
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            } else if (filteredItems.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Image,
+                        contentDescription = null,
+                        tint = Color(0xFF94A3B8),
+                        modifier = Modifier.size(56.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "বর্তমানে গ্যালারিতে কোনো ছবি নেই",
+                        fontFamily = HindSiliguri,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 16.sp,
+                        color = Color(0xFF64748B),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(filteredItems) { photo ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(Color(0xFFE2E0F8)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Image,
+                                contentDescription = photo.title,
+                                tint = Color(0xFF1B2559),
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
                     }
                 }
             }

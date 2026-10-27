@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -67,18 +68,20 @@ fun NoticeBoardScreen(
     val filterOptions = listOf("সব", "জরুরি", "সভা", "অনুষ্ঠান")
 
     val context = LocalContext.current
-    var notices by remember { mutableStateOf<List<NoticeItem>>(FirebaseManager.defaultNotices) }
+    var notices by remember { mutableStateOf<List<NoticeItem>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
 
     DisposableEffect(Unit) {
         val registration = FirebaseManager.listenToNotices(
             context = context,
+            useFallback = false,
             onSuccess = { list ->
-                if (list.isNotEmpty()) {
-                    notices = list
-                }
+                notices = list
+                isLoading = false
             },
             onError = {
-                // Keep default fallback
+                notices = emptyList()
+                isLoading = false
             }
         )
         onDispose {
@@ -172,13 +175,37 @@ fun NoticeBoardScreen(
             }
 
             // Notice Cards List
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(filteredNotices) { notice ->
+            if (isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = NavyPrimary)
+                }
+            } else if (filteredNotices.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "এখনো কোনো নোটিশ নেই",
+                        fontFamily = HindSiliguri,
+                        fontSize = 15.sp,
+                        color = SubtitleGray
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(filteredNotices) { notice ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -260,3 +287,6 @@ fun NoticeBoardScreen(
         }
     }
 }
+}
+
+
